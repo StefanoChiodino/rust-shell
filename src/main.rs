@@ -13,13 +13,10 @@ struct Context {
 }
 
 fn cd(context: &mut Context) -> Result<Option<String>, String> {
-    // let regex = Regex::new(r"[\\/][^\\/]+$").unwrap();
-    if context.args.len() > 0 {
-        context.current_directory = Path::new(&context.args).to_path_buf();
-    } else {
-        // context.current_directory = regex.replace(&context.current_directory, "").to_string();
-        context.current_directory = Path::new(&context.default_directory).to_path_buf();
-    }
+    context.current_directory = match context.args.len() {
+        0 => Path::new(&context.args).to_path_buf(),
+        _ => Path::new(&context.default_directory).to_path_buf(),
+    };
     Ok(None)
 }
 
@@ -40,7 +37,7 @@ fn ls(context: &mut Context) -> Result<Option<String>, String> {
                 .collect::<Vec<String>>()
                 .join("\n");
             Ok(Some(output))
-        },
+        }
         Err(_) => Err(format!("Couldn't read directory '{}'", &context.current_directory.display())),
     }
 }
@@ -65,15 +62,12 @@ fn main() {
         let mut s = String::new();
         stdin().read_line(&mut s).expect("Did not enter a correct string");
         s = s.trim().to_string();
-        // println!("capturing: '{}'", s);
         let captures = line_parser.captures(&s).unwrap();
         let tool = &captures[1];
         context.args = match captures.get(2) {
             Some(capture) => capture.as_str().to_string(),
             _ => String::new(),
         };
-        // println!("tool : '{}'", tool);
-        // println!("args : '{}'", context.args);
         match tools.get(tool) {
             Some(x) =>
                 match x(&mut context) {
