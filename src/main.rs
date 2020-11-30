@@ -3,41 +3,64 @@ use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
 use std::env;
 use regex::Regex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 struct Context {
-    current_directory: String,
+    current_directory: PathBuf,
     current_user: String,
     args: String,
+    default_directory: PathBuf,
 }
 
 fn cd(context: &mut Context) -> Result<Option<String>, String> {
-    let regex = Regex::new(r"[\\/][^\\/]+$").unwrap();
+    // let regex = Regex::new(r"[\\/][^\\/]+$").unwrap();
     if context.args.len() > 0 {
-        if Path::new(&context.args).exists() {
-            context.current_directory = context.args.to_string();
-        } else {
-            return Err(format!("'{}' doesn't exist", context.args));
-        }
+        context.current_directory = Path::new(&context.args).to_path_buf();
     } else {
-        context.current_directory = regex.replace(&context.current_directory, "").to_string();
+        // context.current_directory = regex.replace(&context.current_directory, "").to_string();
+        context.current_directory = Path::new(&context.default_directory).to_path_buf();
     }
     Ok(None)
 }
 
+fn up(context: &mut Context) -> Result<Option<String>, String> {
+    match context.current_directory.parent() {
+        Some(parent) => context.current_directory = parent.to_path_buf(),
+        None => return Err(format!("'{}' doesn't exist", context.args)),
+    }
+    Ok(None)
+}
+
+fn ls(context: &mut Context) -> Result<Option<String>, String> {
+    match std::fs::read_dir(&context.current_directory) {
+        Ok(read_dir) => {
+            let output = read_dir
+                .filter_map(|x| x.ok())
+                .map(|x| x.path().display().to_string())
+                .collect::<Vec<String>>()
+                .join("\n");
+            Ok(Some(output))
+        },
+        Err(_) => Err(format!("Couldn't read directory '{}'", &context.current_directory.display())),
+    }
+}
+
 fn main() {
     let mut context = Context {
-        current_directory: env::current_dir().unwrap().display().to_string(),
+        default_directory: env::current_dir().unwrap(),
+        current_directory: env::current_dir().unwrap(),
         current_user: "Stefano".to_string(),
         args: String::new(),
     };
     let mut tools: HashMap<&str, fn(&mut Context) -> Result<Option<String>, String>> = HashMap::new();
-    tools.insert("pwd", |c: &mut Context| Ok(Some(format!("{}", c.current_directory))));
+    tools.insert("pwd", |c: &mut Context| Ok(Some(format!("{}", c.current_directory.display()))));
     tools.insert("cd", cd);
+    tools.insert("ls", ls);
+    tools.insert("up", up);
 
     let line_parser = Regex::new(r"^([^ ]+) ?(.+)?$").unwrap();
     loop {
-        print!("{}:{}$ ", context.current_user, context.current_directory);
+        print!("{}:{}$ ", context.current_user, context.current_directory.display());
         let _ = stdout().flush();
         let mut s = String::new();
         stdin().read_line(&mut s).expect("Did not enter a correct string");
