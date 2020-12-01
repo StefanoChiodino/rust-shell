@@ -54,28 +54,41 @@ fn main() {
     tools.insert("cd", cd);
     tools.insert("ls", ls);
     tools.insert("up", up);
+    tools.insert("cat", |c: &mut Context| Ok(Some(format!("{}", c.args))));
 
-    let line_parser = Regex::new(r"^([^ ]+) ?(.+)?$").unwrap();
     loop {
         print!("{}:{}$ ", context.current_user, context.current_directory.display());
         let _ = stdout().flush();
         let mut s = String::new();
+
         stdin().read_line(&mut s).expect("Did not enter a correct string");
-        s = s.trim().to_string();
-        let captures = line_parser.captures(&s).unwrap();
+        let piped_parts = s.trim().split("|");
+        let output = execute(&mut context, &mut tools, piped_parts.collect::<Vec<&str>>());
+
+        println!("{}", output);
+    }
+}
+
+fn execute(mut context: &mut Context, tools: &mut HashMap<&str, fn(&mut Context) -> Result<Option<String>, String>>, piped_parts: Vec<&str>) -> String {
+    let mut output = String::new();
+
+    for piped_part in piped_parts {
+        let line_parser = Regex::new(r"^\s*([^ ]+) ?([^ ]+)?$").unwrap();
+        let captures = line_parser.captures(&piped_part).unwrap();
         let tool = &captures[1];
         context.args = match captures.get(2) {
-            Some(capture) => capture.as_str().to_string(),
-            _ => String::new(),
+            Some(capture) => format!("{} {}", capture.as_str(), output),
+            _ => output,
         };
-        match tools.get(tool) {
+        output = match tools.get(tool) {
             Some(x) =>
                 match x(&mut context) {
-                    Ok(Some(text)) => println!("{}", text),
-                    Err(error) => println!("Error: '{}'", error),
-                    _ => ()
+                    Ok(Some(text)) => text,
+                    Ok(None) => String::new(),
+                    Err(error) => return format!("Error: '{}' executing command '{}'", error, piped_part),
                 },
-            None => println!("What?")
+            None => return format!("Error executing command '{}'", piped_part),
         }
     }
+    output
 }
